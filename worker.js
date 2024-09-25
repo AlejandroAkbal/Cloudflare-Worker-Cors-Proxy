@@ -70,26 +70,21 @@ async function handleOptions(request) {
     }
 }
 
-addEventListener('fetch', event => {
-    const {request} = event
+export default {
+    async fetch(request, env, ctx) {
+        switch (request.method) {
 
-    switch (request.method) {
+            case 'GET':
+            case 'HEAD':
+                return handleRequest(request)
 
-        case 'GET':
-        case 'HEAD':
-            event.respondWith(handleRequest(request))
-            break
+            case 'OPTIONS':
+                return handleOptions(request)
 
-        case 'OPTIONS':
-            event.respondWith(handleOptions(request))
-            break
-
-        default:
-            event.respondWith(async () => {
+            default:
                 return new Response(null, {
                     status: 405,
                 })
-            })
-            break
-    }
-})
+        }
+    },
+}
