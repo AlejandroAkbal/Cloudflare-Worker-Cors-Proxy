@@ -1,115 +1,95 @@
 /*
- ** We support the GET, POST, HEAD, and OPTIONS methods from any origin, and accept the Content-Type header on requests.
+ ** We support the GET, HEAD, and OPTIONS methods from any origin, and accept the Content-Type header on requests.
  ** These headers must be present on all responses to all CORS requests.
  ** In practice, this means all responses to OPTIONS requests.
  **
- ** Modified by Alejandro Akbal (VoidlessSeven7)
+ ** Modified by Alejandro Akbal
  */
 
-/**
- * Fetches the request content and returns it
- * @param {*} request
- */
 async function handleRequest(request) {
-  // Initialize url and query
-  const url = new URL(request.url);
-  const query = url.searchParams.get('q');
+    const urlStringFromQuery = new URL(request.url).searchParams.get('q')
 
-  /*
-   * Rewrite request to point to API url. This also makes the request mutable
-   * so we can add the correct Origin header to make the API server think
-   * that this request isn't cross-site.
-   */
-
-  request = new Request(query, request);
-
-  /*
-   * Set headers to make the endpoint think it's itself
-   */
-  request.headers.set('Host', new URL(query).origin);
-  request.headers.set('Referer', new URL(query));
-  // request.headers.set('Origin', new URL(query))
-
-  // Fetch it
-  let response = await fetch(request);
-
-  // Recreate the response so we can modify the headers
-  response = new Response(response.body, response);
-
-  // Set CORS headers
-  response.headers.set('Access-Control-Allow-Origin', '*');
-
-  // Append to/Add Vary header so browser will cache response correctly
-  response.headers.append('Vary', 'Origin');
-
-  // Return it
-  return response;
-}
-
-/**
- * Makes sure that the necessary headers are present for this to be a valid pre-flight request
- * @param {*} request
- */
-async function handleOptions(request) {
-  /*
-   * Handle CORS pre-flight request.
-   * If you want to check the requested method + headers you can do that here.
-   */
-  if (
-    request.headers.get('Origin') !== null &&
-    request.headers.get('Access-Control-Request-Method') !== null &&
-    request.headers.get('Access-Control-Request-Headers') !== null
-  ) {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      }
-    });
-
-    /*
-     * Handle standard OPTIONS request.
-     * If you want to allow other HTTP Methods, you can do that here.
-     */
-  } else {
-    return new Response(null, {
-      headers: {
-        Allow: 'GET, HEAD, POST, OPTIONS'
-      }
-    });
-  }
-}
-
-/*
- ** Event listener for fetching content (What starts everything)
- */
-addEventListener('fetch', event => {
-  // Initialize
-  const request = event.request;
-
-  // Handle CORS preflight requests
-  switch (request.method) {
-    case 'OPTIONS':
-      event.respondWith(handleOptions(request));
-      break;
-
-    // Handle requests
-    case 'GET':
-    case 'HEAD':
-    case 'POST':
-      event.respondWith(handleRequest(request));
-      break;
-
-    // If no good option then return error
-    default:
-      event.respondWith(async () => {
+    if (!urlStringFromQuery) {
         return new Response(null, {
-          status: 405,
+            status: 422,
+            statusText: 'You have to append a query: "?q=URL"',
+        })
+    }
 
-          statusText: 'Method Not Allowed'
-        });
-      });
-      break;
-  }
-});
+    const urlFromQuery = new URL(urlStringFromQuery)
+
+    request = new Request(urlFromQuery.toString(), {
+        ...request,
+
+        // Cloudflare settings
+        cf: {
+            cacheEverything: true,
+        },
+    })
+
+    request.headers.set('Host', urlFromQuery.origin)
+    request.headers.set('Referer', urlFromQuery.toString())
+
+    const originalResponse = await fetch(request)
+
+    const response = new Response(originalResponse.body, originalResponse)
+
+    // Set CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*')
+    response.headers.set('Vary', 'Origin')
+
+    // Allow downloading
+    response.headers.set('Content-Disposition', 'attachment')
+
+    return response
+}
+
+async function handleOptions(request) {
+    /*
+     * Handle CORS pre-flight request.
+     * If you want to check the requested method + headers you can do that here.
+     */
+    if (request.headers.get('Origin') !== null && request.headers.get('Access-Control-Request-Method') !== null && request.headers.get('Access-Control-Request-Headers') !== null) {
+        return new Response(null, {
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                'Access-Control-Max-Age': '86400',
+            }
+        })
+
+        /*
+         * Handle standard OPTIONS request.
+         */
+    } else {
+        return new Response(null, {
+            headers: {
+                Allow: 'GET, HEAD, OPTIONS'
+            }
+        })
+    }
+}
+
+addEventListener('fetch', event => {
+    const {request} = event
+
+    switch (request.method) {
+
+        case 'GET':
+        case 'HEAD':
+            event.respondWith(handleRequest(request))
+            break
+
+        case 'OPTIONS':
+            event.respondWith(handleOptions(request))
+            break
+
+        default:
+            event.respondWith(async () => {
+                return new Response(null, {
+                    status: 405,
+                })
+            })
+            break
+    }
+})
