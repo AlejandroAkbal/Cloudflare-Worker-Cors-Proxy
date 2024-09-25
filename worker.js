@@ -7,7 +7,10 @@
  */
 
 async function handleRequest(request) {
-    const urlStringFromQuery = new URL(request.url).searchParams.get('q')
+    const requestAsUrl = new URL(request.url)
+
+    const urlStringFromQuery = requestAsUrl.searchParams.get('q')
+    const shouldDownload = requestAsUrl.searchParams.get('download') !== null
 
     if (!urlStringFromQuery) {
         return new Response(null, {
@@ -38,8 +41,9 @@ async function handleRequest(request) {
     response.headers.set('Access-Control-Allow-Origin', '*')
     response.headers.set('Vary', 'Origin')
 
-    // Allow downloading
-    response.headers.set('Content-Disposition', 'attachment')
+    if (shouldDownload) {
+        response.headers.set('Content-Disposition', 'attachment')
+    }
 
     return response
 }
